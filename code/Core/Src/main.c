@@ -22,7 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -70,6 +70,9 @@ typedef struct
 	float 	frequency;
 	float	max_voltage;
 	float	min_voltage;
+	float	duty_cycle;
+	uint8_t wave_mode;
+	uint8_t slope_down;
 	uint64_t periodstamp;
 
 } Generator;
@@ -482,11 +485,17 @@ static void MX_GPIO_Init(void)
 
 void generatorInit(Generator *var)
 {
+	var->wave_mode		= 0;
+						//0:sawtooth
+						//1:sinewave
+						//2:squarewave
 	var->count			= 0; 		//0-99 %
 	var->frequency 		= 1;		//0-10 Hz
 	var->max_voltage	= 3.3;		//0-3.3 V
 	var->min_voltage	= 0;		//0-3.3 V
-	var->periodstamp	= micros();
+	var->duty_cycle		= 50.0;		//0-100 %
+	var->periodstamp	= micros();	//uS
+	var->slope_down		= 0;		//0:slope up 1:slope down (sawtooth mode)
 }
 
 void generator()
@@ -496,9 +505,37 @@ void generator()
 	if (micros()-ControlVar.periodstamp > 1/ControlVar.frequency*1000000) {ControlVar.count = 0; ControlVar.periodstamp = micros();}
 
 	//Amplify to 12 bits (0-4096)
-	dataOut = ControlVar.count * (
-			4096/3.3*ControlVar.max_voltage - 4096/3.3*ControlVar.min_voltage) /100
-					+ 4096/3.3*ControlVar.min_voltage;
+	switch (ControlVar.wave_mode)
+	{
+		case 0: //sawtooth
+			if (ControlVar.slope_down) {							//slope down
+				dataOut = (100-ControlVar.count) * (
+						4096/3.3*ControlVar.max_voltage - 4096/3.3*ControlVar.min_voltage) /100
+								+ 4096/3.3*ControlVar.min_voltage;
+			} else {												//slope up
+				dataOut = ControlVar.count * (
+						4096/3.3*ControlVar.max_voltage - 4096/3.3*ControlVar.min_voltage) /100
+								+ 4096/3.3*ControlVar.min_voltage;
+			}
+			break;
+
+		case 1: //sinewave
+			dataOut = (2048/3.3*ControlVar.max_voltage - 2048/3.3*ControlVar.min_voltage) * (
+					sin(ControlVar.count*2.0/100.0*M_PI) + 1) + 4096/3.3*ControlVar.min_voltage;
+			break;
+
+		case 2: //squarewave
+			if (ControlVar.count < ControlVar.duty_cycle) {
+				dataOut = 4096/3.3*ControlVar.max_voltage;
+			}
+			else {
+				dataOut = 4096/3.3*ControlVar.min_voltage;
+			}
+			break;
+
+		default:
+			break;
+	}
 
 	//Send the SPI data
 	if (hspi3.State == HAL_SPI_STATE_READY
