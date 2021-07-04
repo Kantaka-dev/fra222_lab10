@@ -63,6 +63,20 @@ uint8_t DACConfig = 0b0011;
 //SPI data (12 bits)
 uint16_t dataOut = 0;
 
+//Control variables
+typedef struct
+{
+	float 	count;
+	float 	frequency;
+	float	max_voltage;
+	float	min_voltage;
+	uint64_t periodstamp;
+
+} Generator;
+
+Generator ControlVar =
+{ 0 };
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -75,8 +89,12 @@ static void MX_ADC1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM11_Init(void);
 /* USER CODE BEGIN PFP */
+
+void generatorInit(Generator *var);
+void generator();
 void MCP4922SetOutput(uint8_t Config, uint16_t DACOutput);
 uint64_t micros();
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -119,11 +137,15 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
+
 	HAL_TIM_Base_Start(&htim3);
 	HAL_TIM_Base_Start_IT(&htim11);
 	HAL_ADC_Start_DMA(&hadc1, (uint32_t*) &ADCin, 1);
 
 	HAL_GPIO_WritePin(LOAD_GPIO_Port, LOAD_Pin, GPIO_PIN_RESET);
+
+	generatorInit(&ControlVar);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -131,17 +153,10 @@ int main(void)
 	while (1)
 	{
 		static uint64_t timestamp = 0;
-		if (micros() - timestamp > 100)
+		if (micros() - timestamp > 100) // f 10kHz or T 100uS
 		{
 			timestamp = micros();
-			dataOut++;
-			dataOut %= 4096;
-			if (hspi3.State == HAL_SPI_STATE_READY
-					&& HAL_GPIO_ReadPin(SPI_SS_GPIO_Port, SPI_SS_Pin)
-							== GPIO_PIN_SET)
-			{
-				MCP4922SetOutput(DACConfig, dataOut);
-			}
+			generator();
 		}
     /* USER CODE END WHILE */
 
@@ -464,6 +479,35 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void generatorInit(Generator *var)
+{
+	var->count			= 0; 		//0-99 %
+	var->frequency 		= 1;		//0-10 Hz
+	var->max_voltage	= 3.3;		//0-3.3 V
+	var->min_voltage	= 0;		//0-3.3 V
+	var->periodstamp	= micros();
+}
+
+void generator()
+{
+	//Count by normalized to 0-100
+	ControlVar.count += 100 * ControlVar.frequency /10000.0;
+	if (micros()-ControlVar.periodstamp > 1/ControlVar.frequency*1000000) {ControlVar.count = 0; ControlVar.periodstamp = micros();}
+
+	//Amplify to 12 bits (0-4096)
+	dataOut = ControlVar.count * (
+			4096/3.3*ControlVar.max_voltage - 4096/3.3*ControlVar.min_voltage) /100
+					+ 4096/3.3*ControlVar.min_voltage;
+
+	//Send the SPI data
+	if (hspi3.State == HAL_SPI_STATE_READY
+			&& HAL_GPIO_ReadPin(SPI_SS_GPIO_Port, SPI_SS_Pin) == GPIO_PIN_SET)
+	{
+		MCP4922SetOutput(DACConfig, dataOut);
+	}
+}
+
 void MCP4922SetOutput(uint8_t Config, uint16_t DACOutput)
 {
 	uint32_t OutputPacket = (DACOutput & 0x0fff) | ((Config & 0xf) << 12);
