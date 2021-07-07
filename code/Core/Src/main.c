@@ -23,6 +23,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -76,9 +78,22 @@ typedef struct
 	uint64_t periodstamp;
 
 } Generator;
+Generator ControlVar = {0};
 
-Generator ControlVar =
-{ 0 };
+char RxDataBuffer[32] = {0};
+
+typedef enum
+{
+	Main,
+	Change_mode,
+	Change_frequency,
+	Change_max_voltage,
+	Change_min_voltage,
+	Change_duty_cycle,
+	Change_slope
+
+} State;
+State UIState = Main;
 
 /* USER CODE END PV */
 
@@ -93,6 +108,9 @@ static void MX_TIM3_Init(void);
 static void MX_TIM11_Init(void);
 /* USER CODE BEGIN PFP */
 
+void updateUI(int16_t dataIn);
+void updateStatus();
+int16_t UARTRecieveIT();
 void generatorInit(Generator *var);
 void generator();
 void MCP4922SetOutput(uint8_t Config, uint16_t DACOutput);
@@ -149,21 +167,33 @@ int main(void)
 
 	generatorInit(&ControlVar);
 
+	updateStatus();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1)
 	{
+		//Read UART
+		HAL_UART_Receive_IT(&huart2,  (uint8_t*)RxDataBuffer, 32);
+
+		int16_t inputchar = UARTRecieveIT();
+		if (inputchar!=-1)
+		{
+			updateUI(inputchar);
+		}
+
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+
 		static uint64_t timestamp = 0;
 		if (micros() - timestamp > 100) // f 10kHz or T 100uS
 		{
 			timestamp = micros();
 			generator();
 		}
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
 	}
   /* USER CODE END 3 */
 }
@@ -482,6 +512,144 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void updateUI(int16_t dataIn)
+{
+	switch (UIState)
+	{
+		case Main:
+			if (dataIn == 'm')
+			{
+				char temp[256];
+				if (ControlVar.wave_mode == 0) {		//sawtooth
+					sprintf(temp,
+							"\r\n"
+							"========================\r\n"
+							"Change Mode to...\r\n"
+							"========================\r\n"
+					  		"[n] Sine-wave\r\n"
+							"[q] Square-wave\r\n"
+							"[x] back\r\n");
+				}
+				else if (ControlVar.wave_mode == 1) {	//sine-wave
+					sprintf(temp,
+							"\r\n"
+							"========================\r\n"
+							"Change Mode to...\r\n"
+							"========================\r\n"
+					  		"[w] Sawtooth\r\n"
+							"[q] Square-wave\r\n"
+							"[x] back\r\n");
+				}
+				else if (ControlVar.wave_mode == 1) {	//square-wave
+					sprintf(temp,
+							"\r\n"
+							"========================\r\n"
+							"Change Mode to...\r\n"
+							"========================\r\n"
+					  		"[w] Sawtooth\r\n"
+							"[n] Sine-wave\r\n"
+							"[x] back\r\n");
+				}
+				HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+
+				UIState = Change_mode;
+			}
+			break;
+
+		case Change_mode:
+			if (dataIn == 'w') {
+				ControlVar.wave_mode = 0;
+			}
+			else if (dataIn == 'n') {
+				ControlVar.wave_mode = 1;
+			}
+			else if (dataIn == 'q') {
+				ControlVar.wave_mode = 2;
+			}
+			else if (dataIn == 'x') {
+			}
+			else {break;}
+
+			updateStatus();
+
+			UIState = Main;
+			break;
+
+		default:
+			break;
+	}
+}
+
+void updateStatus()
+{
+	char temp[] = "\r\n"
+			"========================\r\n"
+			"MAIN MENU\r\n"
+			"========================\r\n"
+	  		"[m] Change Mode		: ";
+	HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+
+	switch (ControlVar.wave_mode) {
+		case 0:
+			sprintf(temp,
+					"Sawtooth\r\n");
+			break;
+		case 1:
+			sprintf(temp,
+					"Sine-wave\r\n");
+			break;
+		case 2:
+			sprintf(temp,
+					"Square-wave\r\n");
+			break;
+		default:
+			break;
+	}
+	HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+
+	char temp2[128];
+	sprintf(temp2,
+	  		"[f] Change Frequency	: %.1f Hz\r\n"
+			"[a] Change Max-voltage	: %.1f V\r\n"
+			"[i] Change Min-voltage	: %.1f V\r\n",
+			ControlVar.frequency,
+			ControlVar.max_voltage,
+			ControlVar.min_voltage);
+	HAL_UART_Transmit(&huart2, (uint8_t*)temp2, strlen(temp2), 1000);
+
+	if (ControlVar.wave_mode==0 && ControlVar.slope_down) {
+		sprintf(temp2,
+				"[s] Change Slope	: Down\r\n");
+		HAL_UART_Transmit(&huart2, (uint8_t*)temp2, strlen(temp2), 1000);
+	}
+	else if (ControlVar.wave_mode==0 && !ControlVar.slope_down) {
+		sprintf(temp2,
+				"[s] Change Slope	: Up\r\n");
+		HAL_UART_Transmit(&huart2, (uint8_t*)temp2, strlen(temp2), 1000);
+	}
+	else if (ControlVar.wave_mode==2) {
+		sprintf(temp2,
+				"[s] Change Duty-cycle	: %d %\r\n",
+				ControlVar.duty_cycle);
+		HAL_UART_Transmit(&huart2, (uint8_t*)temp2, strlen(temp2), 1000);
+	}
+}
+
+int16_t UARTRecieveIT()
+{
+	//store last data position
+	static uint32_t dataPos = 0;
+	//create dummy data
+	int16_t data=-1;
+	//check
+	if(huart2.RxXferSize - huart2.RxXferCount!=dataPos)
+	{
+		data=RxDataBuffer[dataPos];
+		dataPos= (dataPos+1)%huart2.RxXferSize;
+	}
+	return data;
+}
 
 void generatorInit(Generator *var)
 {
