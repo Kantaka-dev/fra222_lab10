@@ -72,7 +72,7 @@ typedef struct
 	float 	frequency;
 	float	max_voltage;
 	float	min_voltage;
-	float	duty_cycle;
+	uint8_t	duty_cycle;
 	uint8_t wave_mode;
 	uint8_t slope_down;
 	uint64_t periodstamp;
@@ -89,8 +89,7 @@ typedef enum
 	Change_frequency,
 	Change_max_voltage,
 	Change_min_voltage,
-	Change_duty_cycle,
-	Change_slope
+	Change_duty_cycle
 
 } State;
 State UIState = Main;
@@ -542,7 +541,7 @@ void updateUI(int16_t dataIn)
 							"[q] Square-wave\r\n"
 							"[x] back\r\n");
 				}
-				else if (ControlVar.wave_mode == 1) {	//square-wave
+				else if (ControlVar.wave_mode == 2) {	//square-wave
 					sprintf(temp,
 							"\r\n"
 							"========================\r\n"
@@ -606,6 +605,29 @@ void updateUI(int16_t dataIn)
 				HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
 
 				UIState = Change_min_voltage;
+			}
+			else if (dataIn == 's' && ControlVar.wave_mode == 0)
+			{
+				ControlVar.slope_down = !ControlVar.slope_down;
+
+				updateStatus();
+			}
+			else if (dataIn == 'd' && ControlVar.wave_mode == 2)
+			{
+				sprintf(temp,
+						"\r\n"
+						"========================\r\n"
+						"Change Duty-cycle : %d %\r\n"
+						"========================\r\n"
+				  		"[1] Increase +10%\r\n"
+						"[2] Decrease -10%\r\n"
+				  		"[3] Increase  +1%\r\n"
+						"[4] Decrease  -1%\r\n"
+						"[x] back\r\n",
+						ControlVar.duty_cycle);
+				HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+
+				UIState = Change_duty_cycle;
 			}
 			break;
 
@@ -737,6 +759,41 @@ void updateUI(int16_t dataIn)
 			HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
 			break;
 
+		case Change_duty_cycle:
+			if (dataIn == '1' && ControlVar.duty_cycle<=90) {
+				ControlVar.duty_cycle += 10;
+			}
+			else if (dataIn == '2' && ControlVar.duty_cycle>=10) {
+				ControlVar.duty_cycle -= 10;
+			}
+			else if (dataIn == '3' && ControlVar.duty_cycle<=99) {
+				ControlVar.duty_cycle += 1;
+			}
+			else if (dataIn == '4' && ControlVar.duty_cycle>=1) {
+				ControlVar.duty_cycle -= 1;
+			}
+			else if (dataIn == 'x') {
+				updateStatus();
+
+				UIState = Main;
+				break;
+			}
+			else {break;}
+
+			sprintf(temp,
+					"\r\n"
+					"========================\r\n"
+					"Change Duty-cycle : %d %\r\n"
+					"========================\r\n"
+			  		"[1] Increase +10%\r\n"
+					"[2] Decrease -10%\r\n"
+			  		"[3] Increase  +1%\r\n"
+					"[4] Decrease  -1%\r\n"
+					"[x] back\r\n",
+					ControlVar.duty_cycle);
+			HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+			break;
+
 		default:
 			break;
 	}
@@ -791,7 +848,7 @@ void updateStatus()
 	}
 	else if (ControlVar.wave_mode==2) {
 		sprintf(temp2,
-				"[s] Change Duty-cycle	: %d %\r\n",
+				"[d] Change Duty-cycle	: %d %\r\n",
 				ControlVar.duty_cycle);
 		HAL_UART_Transmit(&huart2, (uint8_t*)temp2, strlen(temp2), 1000);
 	}
@@ -822,9 +879,9 @@ void generatorInit(Generator *var)
 	var->frequency 		= 1;		//0-10 Hz
 	var->max_voltage	= 3.3;		//0-3.3 V
 	var->min_voltage	= 0;		//0-3.3 V
-	var->duty_cycle		= 50.0;		//0-100 %
-	var->periodstamp	= micros();	//uS
+	var->duty_cycle		= 50;		//0-100 %
 	var->slope_down		= 0;		//0:slope up 1:slope down (sawtooth mode)
+	var->periodstamp	= micros();	//uS
 }
 
 void generator()
