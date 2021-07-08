@@ -68,7 +68,7 @@ uint16_t dataOut = 0;
 //Control variables
 typedef struct
 {
-	float 	count;
+	double 	count;
 	float 	frequency;
 	float	max_voltage;
 	float	min_voltage;
@@ -515,12 +515,13 @@ static void MX_GPIO_Init(void)
 
 void updateUI(int16_t dataIn)
 {
+	char temp[256];
+
 	switch (UIState)
 	{
 		case Main:
 			if (dataIn == 'm')
 			{
-				char temp[256];
 				if (ControlVar.wave_mode == 0) {		//sawtooth
 					sprintf(temp,
 							"\r\n"
@@ -555,6 +556,57 @@ void updateUI(int16_t dataIn)
 
 				UIState = Change_mode;
 			}
+			else if (dataIn == 'f')
+			{
+				sprintf(temp,
+						"\r\n"
+						"========================\r\n"
+						"Change Frequency : %.1f Hz\r\n"
+						"========================\r\n"
+				  		"[1] Increase +1Hz\r\n"
+						"[2] Decrease -1Hz\r\n"
+				  		"[3] Increase +0.1Hz\r\n"
+						"[4] Decrease -0.1Hz\r\n"
+						"[x] back\r\n",
+						ControlVar.frequency);
+				HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+
+				UIState = Change_frequency;
+			}
+			else if (dataIn == 'a')
+			{
+				sprintf(temp,
+						"\r\n"
+						"========================\r\n"
+						"Change Max-voltage : %.1f V\r\n"
+						"========================\r\n"
+				  		"[1] Increase +1V\r\n"
+						"[2] Decrease -1V\r\n"
+				  		"[3] Increase +0.1V\r\n"
+						"[4] Decrease -0.1V\r\n"
+						"[x] back\r\n",
+						ControlVar.max_voltage);
+				HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+
+				UIState = Change_max_voltage;
+			}
+			else if (dataIn == 'i')
+			{
+				sprintf(temp,
+						"\r\n"
+						"========================\r\n"
+						"Change Min-voltage : %.1f V\r\n"
+						"========================\r\n"
+				  		"[1] Increase +1V\r\n"
+						"[2] Decrease -1V\r\n"
+				  		"[3] Increase +0.1V\r\n"
+						"[4] Decrease -0.1V\r\n"
+						"[x] back\r\n",
+						ControlVar.min_voltage);
+				HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+
+				UIState = Change_min_voltage;
+			}
 			break;
 
 		case Change_mode:
@@ -574,6 +626,115 @@ void updateUI(int16_t dataIn)
 			updateStatus();
 
 			UIState = Main;
+			break;
+
+		case Change_frequency:
+			if (dataIn == '1' && ControlVar.frequency<=9.0001) {
+				ControlVar.frequency += 1;
+			}
+			else if (dataIn == '2' && ControlVar.frequency>=0.9999) {
+				ControlVar.frequency -= 1;
+			}
+			else if (dataIn == '3' && ControlVar.frequency<=9.9001) {
+				ControlVar.frequency += 0.1;
+			}
+			else if (dataIn == '4' && ControlVar.frequency>=0.0999) {
+				ControlVar.frequency -= 0.1;
+			}
+			else if (dataIn == 'x') {
+				updateStatus();
+
+				UIState = Main;
+				break;
+			}
+			else {break;}
+
+			sprintf(temp,
+					"\r\n"
+					"========================\r\n"
+					"Change Frequency : %.1f Hz\r\n"
+					"========================\r\n"
+			  		"[1] Increase +1Hz\r\n"
+					"[2] Decrease -1Hz\r\n"
+			  		"[3] Increase +0.1Hz\r\n"
+					"[4] Decrease -0.1Hz\r\n"
+					"[x] back\r\n",
+					ControlVar.frequency);
+			HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+			break;
+
+		case Change_max_voltage:
+			if (dataIn == '1' && ControlVar.max_voltage<=2.3001) {
+				ControlVar.max_voltage += 1;
+			}
+			else if (dataIn == '2' && ControlVar.max_voltage>=0.9999 &&
+					ControlVar.max_voltage-1 >= ControlVar.min_voltage+0.0999) {
+				ControlVar.max_voltage -= 1;
+			}
+			else if (dataIn == '3' && ControlVar.max_voltage<=3.2001) {
+				ControlVar.max_voltage += 0.1;
+			}
+			else if (dataIn == '4' && ControlVar.max_voltage>=0.0999 &&
+					ControlVar.max_voltage-0.1 >= ControlVar.min_voltage+0.0999) {
+				ControlVar.max_voltage -= 0.1;
+			}
+			else if (dataIn == 'x') {
+				updateStatus();
+
+				UIState = Main;
+				break;
+			}
+			else {break;}
+
+			sprintf(temp,
+					"\r\n"
+					"========================\r\n"
+					"Change Max-voltage : %.1f V\r\n"
+					"========================\r\n"
+			  		"[1] Increase +1V\r\n"
+					"[2] Decrease -1V\r\n"
+			  		"[3] Increase +0.1V\r\n"
+					"[4] Decrease -0.1V\r\n"
+					"[x] back\r\n",
+					ControlVar.max_voltage);
+			HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+			break;
+
+		case Change_min_voltage:
+			if (dataIn == '1' && ControlVar.min_voltage<=2.3001 &&
+					ControlVar.min_voltage+1 <= ControlVar.max_voltage-0.0999) {
+				ControlVar.min_voltage += 1;
+			}
+			else if (dataIn == '2' && ControlVar.min_voltage>=0.9999) {
+				ControlVar.min_voltage -= 1;
+			}
+			else if (dataIn == '3' && ControlVar.min_voltage<=3.2001 &&
+					ControlVar.min_voltage+0.1 <= ControlVar.max_voltage-0.0999) {
+				ControlVar.min_voltage += 0.1;
+			}
+			else if (dataIn == '4' && ControlVar.min_voltage>=0.0999) {
+				ControlVar.min_voltage -= 0.1;
+			}
+			else if (dataIn == 'x') {
+				updateStatus();
+
+				UIState = Main;
+				break;
+			}
+			else {break;}
+
+			sprintf(temp,
+					"\r\n"
+					"========================\r\n"
+					"Change Min-voltage : %.1f V\r\n"
+					"========================\r\n"
+			  		"[1] Increase +1V\r\n"
+					"[2] Decrease -1V\r\n"
+			  		"[3] Increase +0.1V\r\n"
+					"[4] Decrease -0.1V\r\n"
+					"[x] back\r\n",
+					ControlVar.min_voltage);
+			HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
 			break;
 
 		default:
@@ -670,7 +831,10 @@ void generator()
 {
 	//Count by normalized to 0-100
 	ControlVar.count += 100 * ControlVar.frequency /10000.0;
-	if (micros()-ControlVar.periodstamp > 1/ControlVar.frequency*1000000) {ControlVar.count = 0; ControlVar.periodstamp = micros();}
+	//Overflow
+	if (ControlVar.frequency > 0.0001 &&
+			micros()-ControlVar.periodstamp > 1/ControlVar.frequency*1000000) {
+		ControlVar.count = 0; ControlVar.periodstamp = micros();}
 
 	//Amplify to 12 bits (0-4096)
 	switch (ControlVar.wave_mode)
